@@ -5,10 +5,6 @@ import base64
 import os
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
-import win32gui
-import win32con
-import win32api
-import win32con
 import threading
 import time
 
@@ -67,6 +63,8 @@ class AESConverterWindow:
         
         # 快捷窗口
         self.quick_window = None
+        self.quick_input = None
+        self.quick_output = None
         
         # 启动剪切板监听线程
         self.running = True
@@ -95,7 +93,7 @@ class AESConverterWindow:
     def create_quick_window(self):
         self.quick_window = tk.Toplevel()
         self.quick_window.title("AES快捷转换")
-        self.quick_window.geometry("400x200")
+        self.quick_window.geometry("400x300")
         self.quick_window.overrideredirect(True)  # 无边框窗口
         self.quick_window.attributes('-alpha', 0.8)  # 设置透明度
         self.quick_window.attributes('-topmost', True)  # 置顶
@@ -117,17 +115,34 @@ class AESConverterWindow:
         self.quick_window.bind('<Button-1>', start_move)
         self.quick_window.bind('<B1-Motion>', on_motion)
         
-        # 结果显示框
-        quick_output = tk.Text(self.quick_window, height=8, bg='black', fg='white')
-        quick_output.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        # 输入框
+        self.quick_input = tk.Text(self.quick_window, height=6, bg='black', fg='white')
+        self.quick_input.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        self.quick_input.bind('<KeyRelease>', self.on_quick_input_change)
         
-        # 同步显示结果
-        def sync_output(*args):
-            quick_output.delete("1.0", tk.END)
-            quick_output.insert("1.0", self.output_text.get("1.0", tk.END))
+        # 分隔线
+        ttk.Separator(self.quick_window, orient='horizontal').pack(fill='x', padx=10)
         
-        self.output_text.bind('<<Modified>>', sync_output)
-        sync_output()  # 初始同步
+        # 输出框
+        self.quick_output = tk.Text(self.quick_window, height=6, bg='black', fg='white')
+        self.quick_output.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+
+    def on_quick_input_change(self, event=None):
+        input_text = self.quick_input.get("1.0", tk.END).strip()
+        if input_text:
+            if self.is_aes_text(input_text):
+                # 如果是AES加密文本则解密
+                result = self.decrypt(input_text)
+            else:
+                # 如果是普通文本则加密
+                result = self.encrypt(input_text)
+            self.quick_output.delete("1.0", tk.END)
+            self.quick_output.insert("1.0", result)
+            # 自动复制结果
+            pyperclip.copy(result)
+            self.last_clipboard = result
+        else:
+            self.quick_output.delete("1.0", tk.END)
 
     def generate_key(self):
         return os.urandom(16)
@@ -237,12 +252,18 @@ class AESConverterWindow:
         if text:
             self.input_text.delete("1.0", tk.END)
             self.input_text.insert("1.0", text)
+            if self.quick_window:
+                self.quick_input.delete("1.0", tk.END)
+                self.quick_input.insert("1.0", text)
             if self.is_aes_text(text):
                 result = self.decrypt(text)
             else:
                 result = self.encrypt(text)
             self.output_text.delete("1.0", tk.END)
             self.output_text.insert("1.0", result)
+            if self.quick_window:
+                self.quick_output.delete("1.0", tk.END)
+                self.quick_output.insert("1.0", result)
             # 自动复制结果
             self.copy_result()
             
